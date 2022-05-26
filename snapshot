@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+# exit on any error
+set -e
+
+# all vm's (domains) you want to be backed up
+VM=("test1"
+    "test2" 
+    "test3" 
+    "test4"
+)
+
+# path to store backup images
+VM_BACKUP_PATH='/srv/backup/vm'
+
+function gen_snap_name {
+	echo ${1}-snapshot-`date "+%d-%m-%Y-%H-%M"`
+}
+
+function create_ex_snap {
+	echo "virsh snapshot-create-as --domain $1 $2" \
+	"--diskspec ${4},file=`dirname $3`/${2}.qcow2" \
+	"--disk-only --atomic"
+}
+
+function move_snap {
+	echo "cp $1 $VM_BACKUP_PATH/$2"
+}
+
+function commit_back_snap {
+	echo "virsh blockcommit $1 $2 --active --verbose --pivot" #vm, base_image_dev
+}
+
+function backup {
+	for domain in "${VM[@]}"; do
+		# generate the snapshot name (image and snapshot name)
+		snap_name=`gen_snap_name $domain`
+
+		# get the path of the vm image
+		#base_image=`virsh domblklist $domain | grep ^hda | awk {'print $2'}`
+		#base_image_dev=`virsh domblklist $domain | grep ^hda | awk {'print $1'}`
+		# Test dummy
+		base_image='/srv/vm/test.qcow2'
+		base_image_dev='hda'
+
+		# create a external snapshot from $domain with name $snap_name
+		create_ex_snap $domain $snap_name $base_image $base_image_dev
+		echo 
+
+		# move the base disk image to another location
+		move_snap $base_image $snap_name
+		echo
+
+		# merge back the changes
+		commit_back_snap $domain $base_image_dev
+		echo
+	done
+}
+
+function main {
+	backup
+
+	exit 0
+}
+
+main
